@@ -8,9 +8,9 @@ import random
 import boto3
 
 MODELS_IDS = {
-    "3B": "meta-llama/Meta-Llama-3.2-3B-Instruct",
-    "8B": "meta-llama/Meta-Llama-3.1-8B-Instruct",
-    "70B": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+    "3B":   "meta-llama/Meta-Llama-3.2-3B-Instruct",
+    "8B":   "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "70B":  "meta-llama/Meta-Llama-3.1-70B-Instruct",
     "405B": "meta-llama/Meta-Llama-3.1-405B-Instruct"
 }
 
@@ -26,6 +26,13 @@ VLLM_PORTS = {
     "meta-llama/Llama-3.2-3B-Instruct": 8003,
     "meta-llama/Llama-3.1-8B-Instruct": 8008,
     "meta-llama/Llama-3.1-70B-Instruct": 8070,
+}
+
+VLLM_TOKENIZER_IDS = {
+    "meta-llama/Llama-3.2-1B-Instruct" : "meta-llama/Meta-Llama-3.2-3B-Instruct",
+    "meta-llama/Llama-3.2-3B-Instruct" : "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "meta-llama/Llama-3.1-8B-Instruct" : "meta-llama/Meta-Llama-3.1-70B-Instruct", 
+    "meta-llama/Llama-3.1-70B-Instruct" :"meta-llama/Meta-Llama-3.1-70B-Instruct" 
 }
 
 BEDROCK_MODELS_IDS = {
@@ -125,6 +132,44 @@ def generate_hyperbolic_chat_completion(
         return output_token_ids
     else:
         return content
+   
+def prompt_format(system_prompt, user_prompt):
+    if system_prompt:
+        prompt="""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+{system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>
+{user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
+        return prompt.format(system_prompt=system_prompt, user_prompt=user_prompt)
+    else:
+        prompt="""<|begin_of_text|><|start_header_id|>user<|end_header_id|>
+{user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
+        return prompt.format(user_prompt=user_prompt) 
+    
+def generate_vllm_completion(
+    model_id, user_prompt, system_prompt, max_tokens, temperature, top_p
+):
+    url = f"http://localhost:{VLLM_PORTS[model_id]}/v1/completions"
+    headers = {
+        "Content-Type": "application/json"
+    }
+    
+    prompt = prompt_format(system_prompt, user_prompt)
+    
+    data = {
+        "model": model_id,
+        "prompt": prompt,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "top_p": top_p
+    }
+    
+    response = requests.post(url, headers=headers, json=data)
+    try:
+        result = response.json()
+        return result['choices'][0]['text'].strip()
+    except Exception as e:
+        print("Error during vllm completion:", e)
+        print(response.text)
+        raise
     
 def generate_vllm_chat_completion(
     model_id, user_prompt, system_prompt, max_tokens, temperature, top_p
@@ -184,16 +229,7 @@ def generate_bedrock_chat_completion(
         print("Error during model inference:", e)
         raise
 
-def prompt_format(system_prompt, user_prompt):
-    if system_prompt:
-        prompt="""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-{system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>
-{user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
-        return prompt.format(system_prompt=system_prompt, user_prompt=user_prompt)
-    else:
-        prompt="""<|begin_of_text|><|start_header_id|>user<|end_header_id|>
-{user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
-        return prompt.format(user_prompt=user_prompt)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

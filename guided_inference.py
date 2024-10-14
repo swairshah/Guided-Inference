@@ -1,7 +1,50 @@
 import argparse
 import pandas as pd
+import requests
 import random
-from infer import generate_chat_completion, MODELS_IDS
+import logging
+from infer import VLLM_MODELS_IDS, VLLM_TOKENIZER_IDS, VLLM_PORTS
+from transformers import AutoTokenizer
+from termcolor import colored
+
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def prompt_format(system_prompt, user_prompt, assistant_completion=""):
+    if system_prompt:
+        prompt="""<|begin_of_text|><|start_header_id|>system<|end_header_id|>{system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>{user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|> {assistant_completion}"""
+        return prompt.format(system_prompt=system_prompt, user_prompt=user_prompt, assistant_completion=assistant_completion)
+    else:
+        prompt="""<|begin_of_text|><|start_header_id|>user<|end_header_id|>{user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|> {assistant_completion}"""
+        return prompt.format(user_prompt=user_prompt, assistant_completion=assistant_completion) 
+    
+    
+def generate_vllm_completion(
+    model_id, prompt, max_tokens, temperature, top_p, skip_special_tokens=False
+):
+    url = f"http://localhost:{VLLM_PORTS[model_id]}/v1/completions"
+    headers = {
+        "Content-Type": "application/json"
+    }
+    
+    data = {
+        "model": model_id,
+        "prompt": prompt,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "top_p": top_p,
+        "skip_special_tokens": skip_special_tokens
+    }
+    
+    response = requests.post(url, headers=headers, json=data)
+    try:
+        result = response.json()
+        return result['choices'][0]['text'].strip()
+    except Exception as e:
+        print("Error during vllm completion:", e)
+        print(response.text)
+        raise
 
 def guided_inference(
     model_id,
@@ -12,7 +55,8 @@ def guided_inference(
     system_prompt="",
     max_new_tokens=50,
     temperature=0,
-    top_p=1.0
+    top_p=1.0,
+    verbose=False
 ):
     """
     guided inference using a smaller model with occasional help from a larger oracle model.
@@ -27,56 +71,68 @@ def guided_inference(
         temperature (float, optional): The temperature for generation. Defaults to 0.
         top_p (float, optional): The top_p value for nucleus sampling. Defaults to 1.0.
     """
-
-    generated = prompt
+   
+    current_prompt = prompt_format(system_prompt, prompt)
+    
+    interleaved_outputs = []
+   
+    assistant_completion = ""
     total_cheats = 0
-    cheat_positions = sorted(random.sample(range(max_new_tokens), c))
-    full_output = ""
-    step_size = 50
+    step_size = 10
+
+    #if verbose:
+    #    logging.info(f"Starting guided inference with base model: {model_id}, oracle model: {oracle_model_id}")
+    #    logging.info(f"Initial prompt: {current_prompt}")
+    #    logging.info(f"Cheat positions: {cheat_positions}")
 
     i = 0
     while i < max_new_tokens:
-        # Check if we should cheat at this position
-        if total_cheats < c and i == cheat_positions[total_cheats]:
-            # Call the oracle model to generate k tokens
-            partial_completion = generated
-            oracle_output = oracle_infer(oracle_model_id, prompt, partial_completion, new_tokens=k)
-            # Append the oracle output to generated text
-            generated += oracle_output
-            full_output += oracle_output
+        current_prompt = prompt_format(system_prompt, prompt, assistant_completion=assistant_completion)
+        if total_cheats < c and random.random() < 0.5:  
+            #if verbose:
+            #    logging.info(f"Consulting oracle model at position {i}")
+            oracle_output = generate_vllm_completion(
+                model_id=oracle_model_id,
+                prompt=current_prompt,
+                max_tokens=k,
+                temperature=0,
+                top_p=1.0,
+                skip_special_tokens=True
+            )
+            interleaved_outputs.append({"oracle_output": oracle_output})
+            # if verbose:
+            #     logging.info(f"Oracle inference with model: {oracle_model_id}")
+            #     logging.info(f"Partial completion: {assistant_completion}")
+            #     logging.info(f"Oracle output: {oracle_output}")
+            assistant_completion += oracle_output
             total_cheats += 1
             # Skip k-1 steps since we've already added k tokens
             i += k - 1
-            continue
+        else:
+            response = generate_vllm_completion(
+                model_id=model_id,
+                prompt=current_prompt,
+                max_tokens=step_size,
+                temperature=temperature,
+                top_p=top_p,
+                skip_special_tokens=True
+            )
+            interleaved_outputs.append({"base_output": response})
+            assistant_completion += response
+            i += step_size
+            
+        # if verbose:
+        #    logging.info(f"Current assistant generation: {assistant_completion}")
 
-        # Generate next token with the small model
-        response = generate_chat_completion(
-            model_id=model_id,
-            user_prompt=generated,
-            system_prompt=system_prompt,
-            max_tokens=step_size,
-            temperature=temperature,
-            top_p=top_p,
-            return_tokens=False  # We'll get the generated text
-        )
-        # Append the generated token to the text
-        generated += response
-        full_output += response
-        i += step_size
-
-    return full_output
-
-def oracle_infer(oracle_model_id, user_prompt, partial_completion, new_tokens=1):
-    oracle_response = generate_chat_completion(
-        model_id=oracle_model_id,
-        user_prompt=partial_completion,
-        system_prompt="You are a helpful assistant.",
-        max_tokens=new_tokens,
-        temperature=0,
-        top_p=1.0,
-        return_tokens=False
-    )
-    return oracle_response
+    if verbose:
+        for i, output in enumerate(interleaved_outputs):
+            if 'oracle_output' in output:
+                print(colored(output['oracle_output'], 'blue'), end=" ")
+            if 'base_output' in output:
+                print(colored(output['base_output'], 'red'), end=" ")
+        print()  # Single newline after all outputs
+        
+    return assistant_completion
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -88,19 +144,25 @@ if __name__ == "__main__":
     parser.add_argument("--max_new_tokens", type=int, default=50, help="Maximum number of new tokens to generate")
     parser.add_argument("--temperature", type=float, default=0, help="Temperature for the small model")
     parser.add_argument("--top_p", type=float, default=1.0, help="Top P for the small model")
-
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     args = parser.parse_args()
 
-    small_model_id = MODELS_IDS[args.base_model]
-    oracle_model_id = MODELS_IDS[args.oracle_model]
+    small_model_id = VLLM_MODELS_IDS[args.base_model]
+    oracle_model_id = VLLM_MODELS_IDS[args.oracle_model]
+    
+    logging.info(f"Base model ID: {small_model_id}")
+    logging.info(f"Oracle model ID: {oracle_model_id}")
+
     result = guided_inference(
         model_id=small_model_id,
-        user_prompt=args.prompt,
+        oracle_model_id=oracle_model_id,
+        prompt=args.prompt,
         c=args.c,
         k=args.k,
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
-        top_p=args.top_p
+        top_p=args.top_p,
+        verbose=args.verbose
     )
     print(result)
 

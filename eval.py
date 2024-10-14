@@ -1,45 +1,109 @@
 import pandas as pd
-from infer import generate_chat_completion, MODELS_IDS
+from infer import generate_chat_completion, MODELS_IDS, BEDROCK_MODELS_IDS, VLLM_MODELS_IDS
 from guided_inference import guided_inference
+from tqdm import tqdm
+import argparse
 
 from math_utils import normalize_final_answer, process_results, last_boxed_only_string, remove_boxed
 
-model_id = MODELS_IDS["3B"]
-print(model_id)
-df = pd.read_json("llama-3.2-1b-instruct-math-eval.jsonl", lines=True)
+def evaluate_accuracy(df, base_model_id, oracle_model_id, c, k):
+    correct = 0
+    total = 0
+    
+    for idx in tqdm(range(len(df)), desc="Evaluating"):
+        prompt = df.iloc[idx]["input_final_prompts"][0]
+        ground_truth = df.iloc[idx]["input_correct_responses"][0]
+        eval_config = df.iloc[idx]["eval_config"]
+        
+        # result = generate_chat_completion(
+        #     model_id=model_id,
+        #     user_prompt=prompt,
+        #     max_tokens=int(eval_config["max_gen_len"]),
+        #     temperature=float(eval_config["temperature"]),
+        #     return_tokens=False,
+        #     provider="vllm"
+        # )
+        
+        result = guided_inference(
+            model_id=base_model_id,
+            oracle_model_id=oracle_model_id,
+            prompt=prompt,
+            c=c,
+            k=k,
+            max_new_tokens=int(eval_config["max_gen_len"]),
+            temperature=float(eval_config["temperature"]),
+        )
+        
+        try:
+            final_parsed_answer = normalize_final_answer(remove_boxed(last_boxed_only_string(result)))
+            if final_parsed_answer == ground_truth:
+                correct += 1
+            total += 1
+        except Exception as e:
+            print(f"Error processing row {idx}: {e}")
+    
+    accuracy = correct / total if total > 0 else 0
+    return accuracy
 
-idx = 0
-prompt = df.iloc[idx]["input_final_prompts"][0]
-eval_config = df.iloc[idx]["eval_config"]
-base_output = df.iloc[idx]["output_prediction_text"]
 
-ground_truth = df.iloc[idx]["input_correct_responses"][0]
 
-cheat_count = 10
-cheat_length = 5
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Evaluate model accuracy using guided inference.")
+    parser.add_argument("--base_model", choices=VLLM_MODELS_IDS.keys(), default="1B", help="Base model to use")
+    parser.add_argument("--oracle_model", choices=VLLM_MODELS_IDS.keys(), default="8B", help="Oracle model to use")
+    parser.add_argument("--c", type=int, required=True, help="Number of candidates")
+    parser.add_argument("--k", type=int, required=True, help="Number of tokens to reveal")
+    parser.add_argument("--num_samples", type=int, default=100, help="Number of samples to evaluate")
+    
+    args = parser.parse_args()
 
-result = guided_inference(
-    model_id=model_id,
-    oracle_model_id=MODELS_IDS["70B"],
-    prompt=prompt,
-    c=cheat_count,
-    k=cheat_length,
-    max_new_tokens=int(eval_config["max_gen_len"]),
-    temperature=eval_config["temperature"],
-)
+    base_model_id = VLLM_MODELS_IDS[args.base_model]
+    oracle_model_id = VLLM_MODELS_IDS[args.oracle_model]
+    
+    print(f"Base model: {args.base_model} ({base_model_id})")
+    print(f"Oracle model: {args.oracle_model} ({oracle_model_id})")
+    print(f"Cheat budget (c): {args.c}")
+    print(f"Cheat length (k): {args.k}")
+    print(f"Number of samples: {args.num_samples}")
+    
+    df = pd.read_json("data/llama-3.2-3b-instruct-math-eval.jsonl", lines=True)
+    accuracy = evaluate_accuracy(df[:args.num_samples], base_model_id, oracle_model_id, args.c, args.k)
+    print(f"Accuracy: {accuracy:.4f}")
 
-# result = generate_chat_completion(
-#     model_id=model_id,
-#     user_prompt=prompt,
-#     max_tokens=eval_config["max_gen_len"],
-#     temperature=eval_config["temperature"],
-#     return_tokens=False
-# )
-# print(result)
-try:
-    final_parsed_answer = normalize_final_answer(remove_boxed(last_boxed_only_string(result)))
-    print(final_parsed_answer)
-except Exception as e:
-    pass
-
-import IPython; IPython.embed()
+    #idx = 0
+    #prompt = df.iloc[idx]["input_final_prompts"][0]
+    #eval_config = df.iloc[idx]["eval_config"]
+    #base_output = df.iloc[idx]["output_prediction_text"]
+    #
+    #ground_truth = df.iloc[idx]["input_correct_responses"][0]
+    #
+    #cheat_count = 10
+    #cheat_length = 5
+    
+    # result = guided_inference(
+    #     model_id=model_id,
+    #     oracle_model_id=MODELS_IDS["70B"],
+    #     prompt=prompt,
+    #     c=cheat_count,
+    #     k=cheat_length,
+    #     max_new_tokens=int(eval_config["max_gen_len"]),
+    #     temperature=eval_config["temperature"],
+    # )
+    
+    #result = generate_chat_completion(
+    #    model_id=model_id,
+    #    user_prompt=prompt,
+    #    max_tokens=int(eval_config["max_gen_len"]),
+    #    #max_tokens=2048,
+    #    temperature=float(eval_config["temperature"]),
+    #    return_tokens=False,
+    #    provider="vllm"
+    #)
+    #print(result)
+    #try:
+    #    final_parsed_answer = normalize_final_answer(remove_boxed(last_boxed_only_string(result)))
+    #    print(final_parsed_answer)
+    #except Exception as e:
+    #    pass
+    
+    import IPython; IPython.embed()
