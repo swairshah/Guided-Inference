@@ -6,7 +6,7 @@ There should be a correlation between c (how many times you cheat) and final sco
 
 
 Evals from Llama website:
-
+```
 +--------+-------+-------+-------+-------+-------+
 | Model  |   1B  |   3B  |   8B  |  70B  | 405B  |
 +--------+-------+-------+-------+-------+-------+
@@ -14,6 +14,7 @@ Evals from Llama website:
 +--------+-------+-------+-------+-------+-------+
 | GPQA   |  27.2 |  32.8 |  32.8 |  46.7 |  51.1 |
 +--------+-------+-------+-------+-------+-------+
+```
 ___________
 
 TODO: First establishing that (call the cheat function c times randomly during generation + for a fixed c call cheat f unction with varying k randomly during generation). and second try to figure out if there is a specific signal in the probability or entropy scores of the smaller model where we can get an indication WHEN to call the oracle model.
@@ -27,6 +28,7 @@ first 100 MATH dataset:
 
 Experiments: 
 1B Base + 8B Oracle
+```
 +-----+-----+----------+
 |  k  |  c  | accuracy |
 +-----+-----+----------+
@@ -39,7 +41,7 @@ Experiments:
 | 10  | 100 |   20.55  | 
 |  ∞ |  ∞ |   42.04  | 
 +-----+-----+----------+
-
+```
 ______________
 
 
@@ -56,49 +58,3 @@ Meta analysis:
 on MATH dataset check the answers that 1B model got wrong and 3B model got right. For those check the first token 1B token makes a mistake, 
 calculate the prob/entropy. 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-High Varentropy
-    ^            
-    |            
-    +-------------------------+-------------------------+
-    |                         |                         |
-    |   Low Entropy,          |   High Entropy,         |
-    |   High Varentropy       |   High Varentropy       |
-    |                         |                         |
-    | • Confident, but few    | • Generally uncertain,  |
-    |   competing predictions |   some tokens more      |
-    |                         |   likely                |
-    | • Ex: Choosing between  | • Ex: Generating text   |
-    |   related words         |   in unfamiliar domain  |
-    |                         |                         |
-    +-------------------------+-------------------------+
-    |                         |                         |
-    |   Low Entropy,          |   High Entropy,         |
-    |   Low Varentropy        |   Low Varentropy        |
-    |                         |                         |
-    | • Very confident        | • Uncertain, many       |
-    |   prediction            |   tokens with similar   |
-    |                         |   probabilities         |
-    | • Ex: Generating "the"  | • Ex: Starting a new    |
-    |   in common phrase      |   sentence              |
-    |                         |                         |
-    +---------------------------------------------------------> High Entropy
