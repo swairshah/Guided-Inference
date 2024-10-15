@@ -209,12 +209,6 @@ if __name__ == "__main__":
     with open("stats.json", "w") as f:
         f.write(stats.to_json())
     
-    from transformers import AutoTokenizer
-    tokenizer = AutoTokenizer.from_pretrained(VLLM_TOKENIZER_IDS[base_model_id], token=os.environ["HF_TOKEN"])
-    import IPython; IPython.embed()
-    
-
-    #df = pd.read_json(args.dataset, lines=True)[:100]
 
 
 
