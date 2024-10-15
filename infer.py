@@ -29,10 +29,10 @@ VLLM_PORTS = {
 }
 
 VLLM_TOKENIZER_IDS = {
-    "meta-llama/Llama-3.2-1B-Instruct" : "meta-llama/Meta-Llama-3.2-3B-Instruct",
-    "meta-llama/Llama-3.2-3B-Instruct" : "meta-llama/Meta-Llama-3.1-8B-Instruct",
-    "meta-llama/Llama-3.1-8B-Instruct" : "meta-llama/Meta-Llama-3.1-70B-Instruct", 
-    "meta-llama/Llama-3.1-70B-Instruct" :"meta-llama/Meta-Llama-3.1-70B-Instruct" 
+    "meta-llama/Llama-3.2-1B-Instruct" : "meta-llama/Llama-3.2-3B-Instruct",
+    "meta-llama/Llama-3.2-3B-Instruct" : "meta-llama/Llama-3.1-8B-Instruct",
+    "meta-llama/Llama-3.1-8B-Instruct" : "meta-llama/Llama-3.1-70B-Instruct", 
+    "meta-llama/Llama-3.1-70B-Instruct" :"meta-llama/Llama-3.1-70B-Instruct" 
 }
 
 BEDROCK_MODELS_IDS = {
