@@ -1,4 +1,9 @@
-In the community the consensus is that : scaling always keeps imporving CELoss but sometimes that adds up to generating the correct tokens and then the final output that you get is right many more times compared to previous version of the model and you get a step change increase in the task performance.
+## Using an (large) Oracle language model to improve perf of a (small) base language model.
+
+If a smaller language model is allowed to "cheat" how much better can it get at a task?
+
+
+In the community the consensus is that: scaling always keeps imporving CELoss but sometimes that adds up to generating the correct tokens and then the final output that you get is right many more times compared to previous version of the model and you get a step change increase in the task performance.
 
 while running eval on a small model if "every once in a while" you call a function oracle_infer(prompt, partial_completion, new_tokens=k) So the small model gets to cheat and ask tokens from a bigger model and continue from there. then the task performance would go up. 
 
