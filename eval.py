@@ -1,14 +1,16 @@
 import pandas as pd
 from infer import generate_chat_completion, MODELS_IDS, BEDROCK_MODELS_IDS, VLLM_MODELS_IDS
-from guided_inference import guided_inference
+from guided_inference import guided_inference, get_latest_stats
 from tqdm import tqdm
 import argparse
+import json
 
 from math_utils import normalize_final_answer, process_results, last_boxed_only_string, remove_boxed
 
-def evaluate_accuracy(df, base_model_id, oracle_model_id, c, k):
+def evaluate_accuracy(df, base_model_id, oracle_model_id, c, k, output_file=None, verbose=False):
     correct = 0
     total = 0
+    all_stats = []
     
     for idx in tqdm(range(len(df)), desc="Evaluating"):
         prompt = df.iloc[idx]["input_final_prompts"][0]
@@ -32,16 +34,31 @@ def evaluate_accuracy(df, base_model_id, oracle_model_id, c, k):
             k=k,
             max_new_tokens=int(eval_config["max_gen_len"]),
             temperature=float(eval_config["temperature"]),
+            verbose=verbose
         )
+        
+        stats = get_latest_stats()
+        eval_stats = stats.to_dict()
+        eval_stats["eval_config"] = eval_config
+        eval_stats["prompt"] = prompt
+        eval_stats["result"] = result
+        eval_stats["ground_truth"] = ground_truth
+        eval_stats["parsed_answer"] = None
+        all_stats.append(eval_stats)
         
         try:
             final_parsed_answer = normalize_final_answer(remove_boxed(last_boxed_only_string(result)))
+            eval_stats["parsed_answer"] = final_parsed_answer
             if final_parsed_answer == ground_truth:
                 correct += 1
             total += 1
         except Exception as e:
             print(f"Error processing row {idx}: {e}")
-    
+           
+        if output_file:
+            with open(output_file, "a") as f:
+                f.write(json.dumps(eval_stats) + "\n")
+            
     accuracy = correct / total if total > 0 else 0
     return accuracy
 
@@ -54,7 +71,8 @@ if __name__ == "__main__":
     parser.add_argument("--c", type=int, required=True, help="Number of candidates")
     parser.add_argument("--k", type=int, required=True, help="Number of tokens to reveal")
     parser.add_argument("--num_samples", type=int, default=100, help="Number of samples to evaluate")
-    
+    parser.add_argument("--output_file", type=str, default="eval_results.csv", help="File to output results to")
+    parser.add_argument("--verbose", action="store_true", default=False, help="Print verbose output")
     args = parser.parse_args()
 
     base_model_id = VLLM_MODELS_IDS[args.base_model]
@@ -66,8 +84,8 @@ if __name__ == "__main__":
     print(f"Cheat length (k): {args.k}")
     print(f"Number of samples: {args.num_samples}")
     
-    df = pd.read_json("data/llama-3.2-3b-instruct-math-eval.jsonl", lines=True)
-    accuracy = evaluate_accuracy(df[:args.num_samples], base_model_id, oracle_model_id, args.c, args.k)
+    df = pd.read_json("data/llama-3.2-1b-instruct-math-eval.jsonl", lines=True)
+    accuracy = evaluate_accuracy(df[:args.num_samples], base_model_id, oracle_model_id, args.c, args.k, args.output_file, args.verbose)
     print(f"Accuracy: {accuracy:.4f}")
 
     #idx = 0
@@ -106,4 +124,4 @@ if __name__ == "__main__":
     #except Exception as e:
     #    pass
     
-    import IPython; IPython.embed()
+    #import IPython; IPython.embed()

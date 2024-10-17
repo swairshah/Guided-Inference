@@ -14,6 +14,7 @@ from dataclasses import asdict
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+_latest_stats = None
 
 @dataclass
 class Stats:
@@ -25,7 +26,6 @@ class Stats:
     base_model_id: str = ""
     oracle_model_id: str = ""
     prompt: str = ""
-    formatted_prompt: str = ""
     interleaved_outputs: List[Dict] = field(default_factory=list)
     base_model_generations: List[str] = field(default_factory=list)
     oracle_model_generations: List[str] = field(default_factory=list)
@@ -35,6 +35,13 @@ class Stats:
     def to_json(self):
         return json.dumps(asdict(self))
     
+    def to_dict(self):
+        return asdict(self)
+    
+def get_latest_stats() -> Stats:
+    global _latest_stats
+    return _latest_stats
+   
 def prompt_format(system_prompt, user_prompt, assistant_completion=""):
     if system_prompt:
         prompt="""<|begin_of_text|><|start_header_id|>system<|end_header_id|>{system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>{user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|> {assistant_completion}"""
@@ -72,7 +79,6 @@ def generate_vllm_completion(
         raise
 
 
-stats = Stats()
 def guided_inference(
     model_id,
     oracle_model_id,
@@ -99,7 +105,9 @@ def guided_inference(
         temperature (float, optional): The temperature for generation. Defaults to 0.
         top_p (float, optional): The top_p value for nucleus sampling. Defaults to 1.0.
     """
-    global stats
+    global _latest_stats
+    stats = Stats()
+    _latest_stats = stats
     
     stats.base_model_id = model_id
     stats.oracle_model_id = oracle_model_id
@@ -110,7 +118,6 @@ def guided_inference(
     stats.top_p = top_p
     stats.prompt = prompt
     current_prompt = prompt_format(system_prompt, prompt)
-    stats.formatted_prompt = current_prompt
     
     interleaved_outputs = []
    
@@ -120,8 +127,12 @@ def guided_inference(
 
     i = 0
     while i < max_new_tokens:
+        # Check if the last 5 base model generations are empty lines
+       
+        cheat_probability = 0.1 + (0.9 * i / max_new_tokens)
+ 
         current_prompt = prompt_format(system_prompt, prompt, assistant_completion=assistant_completion)
-        if total_cheats < c and random.random() < 0.5:  
+        if total_cheats < c and random.random() < cheat_probability:  
             oracle_output, completion_tokens = generate_vllm_completion(
                 model_id=oracle_model_id,
                 prompt=current_prompt,
@@ -151,6 +162,9 @@ def guided_inference(
                 top_p=top_p,
                 skip_special_tokens=True
             )
+            
+            if base_output.strip() == "":
+                break
             interleaved_outputs.append({"output": base_output, "model_type" : "base"})
             assistant_completion += base_output
             
@@ -159,6 +173,7 @@ def guided_inference(
             stats.total_tokens_generated += completion_tokens
             
             i += completion_tokens
+            
             
     if verbose:
         for i, output in enumerate(interleaved_outputs):
@@ -205,9 +220,6 @@ if __name__ == "__main__":
         verbose=args.verbose
     )
     print(result)
-    print(stats)
-    with open("stats.json", "w") as f:
-        f.write(stats.to_json())
     
 
 
