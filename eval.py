@@ -58,7 +58,9 @@ def evaluate_accuracy(df, base_model_id, oracle_model_id, c, k, output_file=None
         if output_file:
             with open(output_file, "a") as f:
                 f.write(json.dumps(eval_stats) + "\n")
-            
+        
+        running_accuracy = correct / total if total > 0 else 0
+        tqdm.write(f"Running Accuracy: {running_accuracy:.4f}")
     accuracy = correct / total if total > 0 else 0
     return accuracy
 
@@ -70,6 +72,7 @@ if __name__ == "__main__":
     parser.add_argument("--oracle_model", choices=VLLM_MODELS_IDS.keys(), default="8B", help="Oracle model to use")
     parser.add_argument("--c", type=int, required=True, help="Number of candidates")
     parser.add_argument("--k", type=int, required=True, help="Number of tokens to reveal")
+    parser.add_argument("--start_index", type=int, default=0, help="Starting index for evaluation")
     parser.add_argument("--num_samples", type=int, default=100, help="Number of samples to evaluate")
     parser.add_argument("--output_file", type=str, default="eval_results.csv", help="File to output results to")
     parser.add_argument("--verbose", action="store_true", default=False, help="Print verbose output")
@@ -85,7 +88,12 @@ if __name__ == "__main__":
     print(f"Number of samples: {args.num_samples}")
     
     df = pd.read_json("data/llama-3.2-1b-instruct-math-eval.jsonl", lines=True)
-    accuracy = evaluate_accuracy(df[:args.num_samples], base_model_id, oracle_model_id, args.c, args.k, args.output_file, args.verbose)
+    if args.start_index > 0:
+        df = df.iloc[args.start_index:]
+    elif args.num_samples > 0:
+        df = df.iloc[:args.num_samples]
+    
+    accuracy = evaluate_accuracy(df, base_model_id, oracle_model_id, args.c, args.k, args.output_file, args.verbose)
     print(f"Accuracy: {accuracy:.4f}")
 
     #idx = 0

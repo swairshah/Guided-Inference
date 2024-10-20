@@ -9,7 +9,7 @@ from infer import VLLM_MODELS_IDS, VLLM_TOKENIZER_IDS, VLLM_PORTS
 from dataclasses import dataclass, field
 from transformers import AutoTokenizer
 from termcolor import colored
-from typing import List, Dict
+from typing import List, Dict, Optional
 from dataclasses import asdict
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -31,6 +31,12 @@ class Stats:
     oracle_model_generations: List[str] = field(default_factory=list)
     cheat_positions: List[int] = field(default_factory=list)
     total_tokens_generated: int = 0
+    eval_config: Optional[Dict] = None
+    prompt: Optional[str] = None
+    result: Optional[str] = None
+    ground_truth: Optional[str] = None
+    parsed_answer: Optional[str] = None
+    analysis: Optional[List[Dict]] = None
     
     def to_json(self):
         return json.dumps(asdict(self))
@@ -42,7 +48,7 @@ def get_latest_stats() -> Stats:
     global _latest_stats
     return _latest_stats
    
-def prompt_format(system_prompt, user_prompt, assistant_completion=""):
+def prompt_format(system_prompt=None, user_prompt="", assistant_completion=""):
     if system_prompt:
         prompt="""<|begin_of_text|><|start_header_id|>system<|end_header_id|>{system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>{user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|> {assistant_completion}"""
         return prompt.format(system_prompt=system_prompt, user_prompt=user_prompt, assistant_completion=assistant_completion)
@@ -128,8 +134,10 @@ def guided_inference(
     i = 0
     while i < max_new_tokens:
         # Check if the last 5 base model generations are empty lines
+        if len(stats.base_model_generations) >= 5 and all(gen.strip() == "" for gen in stats.base_model_generations[-5:]):
+            break
        
-        cheat_probability = 0.1 + (0.9 * i / max_new_tokens)
+        cheat_probability = 0.3 + (0.7 * i / max_new_tokens)
  
         current_prompt = prompt_format(system_prompt, prompt, assistant_completion=assistant_completion)
         if total_cheats < c and random.random() < cheat_probability:  
@@ -163,8 +171,8 @@ def guided_inference(
                 skip_special_tokens=True
             )
             
-            if base_output.strip() == "":
-                break
+            #if base_output.strip() == "":
+            #    break
             interleaved_outputs.append({"output": base_output, "model_type" : "base"})
             assistant_completion += base_output
             
