@@ -53,7 +53,7 @@ ______________
 full 5000 MATH dataset (we independently evaluated):
 1B: 27.93 
 8B: 47.51
-
+```
 +-----+-----+----------+
 |  k  |  c  | accuracy |
 +-----+-----+----------+
@@ -61,7 +61,7 @@ full 5000 MATH dataset (we independently evaluated):
 | 10  | 20  |   31.73  | 
 |  ∞ |  ∞ |   47.51  | 
 +-----+-----+----------+
-
+```
 _____________________
 
 Meta analysis:
