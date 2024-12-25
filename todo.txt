@@ -1,0 +1,6 @@
+In PRM8000 dataset: https://github.com/openai/prm800k
+
+For each data point pass it to llama1b, 8b. 
+At the beggining and end of each CoT line compute the statistics (top 1 prob, top1-top2 prob, entropy, varentropy).
+see if there is a correlation between any of these statistic to the Thought chain label (as dataset labels it true or false).
+
